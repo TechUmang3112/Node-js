@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 
-exports.identifier = (res, req, next) => {
+exports.identifier = (req, res, next) => {
   let token;
   if (req.headers.client === "not-browser") {
     token = req.headers.authorization;
@@ -9,11 +9,11 @@ exports.identifier = (res, req, next) => {
   }
 
   if (!token) {
-    return res.status(403).json({ success: false, message: "unauthorized!!" });
+    return res.status(403).json({ success: false, message: "Unauthorized" });
   }
 
   try {
-    const userToken = tokrn.split(" ")[1];
+    const userToken = token.split(" ")[1];
     const jwtVerified = jwt.verify(userToken, process.env.TOKEN_SECRET);
     if (jwtVerified) {
       req.user = jwtVerified;
