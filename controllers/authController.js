@@ -18,7 +18,7 @@ exports.signup = async (req, res) => {
 
     if (error) {
       return res
-        .status(401)
+        .status(400)
         .json({ success: false, message: error.details[0].message });
     }
 
@@ -110,23 +110,43 @@ exports.signout = async (req, res) => {
 exports.sendVerificationCode = async (req, res) => {
   const { email } = req.body;
   try {
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email }).select(
+      "+lastVerificationCodeSentAt"
+    );
+
     if (!existingUser) {
       return res
         .status(404)
-        .json({ success: false, message: "User does not exists!" });
+        .json({ success: false, message: "User does not exist!" });
     }
+
     if (existingUser.verified) {
       return res
         .status(400)
         .json({ success: false, message: "You are already verified!" });
     }
 
-    const codeValue = Math.floor(Math.random() * 1000000).toString();
+    if (existingUser.lastVerificationCodeSentAt) {
+      const cooldownEndTime = new Date(
+        existingUser.lastVerificationCodeSentAt.getTime() + 30 * 1000
+      );
+
+      if (new Date() < cooldownEndTime) {
+        const remainingSeconds = Math.ceil(
+          (cooldownEndTime - new Date()) / 1000
+        );
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${remainingSeconds} seconds before requesting a new code.`,
+        });
+      }
+    }
+
+    const codeValue = Math.floor(100000 + Math.random() * 900000).toString();
     let info = await transport.sendMail({
       from: process.env.NODE_CODE_SENDING_EMAIL_ADDRESS,
       to: existingUser.email,
-      subject: "verification code",
+      subject: "Verification Code",
       html: `
     <!DOCTYPE html>
     <html>
@@ -172,12 +192,19 @@ exports.sendVerificationCode = async (req, res) => {
       );
       existingUser.verificationCode = hashedCodeValue;
       existingUser.verificationCodeValidation = Date.now();
+      existingUser.lastVerificationCodeSentAt = new Date();
       await existingUser.save();
       return res.status(200).json({ success: true, message: "Code sent!" });
     }
-    res.status(400).json({ success: false, message: "Code sent failed!" });
+
+    return res
+      .status(400)
+      .json({ success: false, message: "Failed to send code!" });
   } catch (error) {
-    console.log(error);
+    console.error("OTP sending error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -193,7 +220,7 @@ exports.verifyVerificationCode = async (req, res) => {
 
     const codeValue = providedCode.toString();
     const existingUser = await User.findOne({ email }).select(
-      "+verificationCode +verificationCodeValidation"
+      "+verificationCode +verificationCodeValidation +failedAttempts +lastFailedAttempt"
     );
 
     if (!existingUser) {
@@ -201,6 +228,25 @@ exports.verifyVerificationCode = async (req, res) => {
         .status(401)
         .json({ success: false, message: "User does not exists!" });
     }
+
+    if (existingUser.failedAttempts >= 3) {
+      const cooldownEndTime = new Date(
+        existingUser.lastFailedAttempt.getTime() + 5 * 60 * 1000
+      );
+      if (new Date() < cooldownEndTime) {
+        const remainingMinutes = Math.ceil(
+          (cooldownEndTime - new Date()) / (60 * 1000)
+        );
+        return res.status(429).json({
+          success: false,
+          message: `Too many attempts. Try again in ${remainingMinutes} minute(s).`,
+        });
+      } else {
+        existingUser.failedAttempts = 0;
+        await existingUser.save();
+      }
+    }
+
     if (existingUser.verified) {
       return res
         .status(400)
@@ -231,16 +277,26 @@ exports.verifyVerificationCode = async (req, res) => {
       existingUser.verified = true;
       existingUser.verificationCode = undefined;
       existingUser.verificationCodeValidation = undefined;
+      existingUser.failedAttempts = 0;
+      existingUser.lastFailedAttempt = undefined;
       await existingUser.save();
       return res
         .status(200)
         .json({ success: true, message: "your account has been verified!" });
+    } else {
+      existingUser.failedAttempts = (existingUser.failedAttempts || 0) + 1;
+      existingUser.lastFailedAttempt = new Date();
+      await existingUser.save();
+
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid verification code!" });
     }
-    return res
-      .status(400)
-      .json({ success: false, message: "unexpected occured!!" });
   } catch (error) {
     console.log(error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -290,18 +346,37 @@ exports.changePassword = async (req, res) => {
 exports.sendForgotPasswordCode = async (req, res) => {
   const { email } = req.body;
   try {
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email }).select(
+      "+lastForgotPasswordCodeSentAt"
+    );
+
     if (!existingUser) {
       return res
         .status(404)
-        .json({ success: false, message: "User does not exists!" });
+        .json({ success: false, message: "User does not exist!" });
     }
 
-    const codeValue = Math.floor(Math.random() * 1000000).toString();
+    if (existingUser.lastForgotPasswordCodeSentAt) {
+      const cooldownEndTime = new Date(
+        existingUser.lastForgotPasswordCodeSentAt.getTime() + 30 * 1000
+      );
+
+      if (new Date() < cooldownEndTime) {
+        const remainingSeconds = Math.ceil(
+          (cooldownEndTime - new Date()) / 1000
+        );
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${remainingSeconds} seconds before requesting a new password reset code.`,
+        });
+      }
+    }
+
+    const codeValue = Math.floor(100000 + Math.random() * 900000).toString();
     let info = await transport.sendMail({
       from: process.env.NODE_CODE_SENDING_EMAIL_ADDRESS,
       to: existingUser.email,
-      subject: "Forgot password code",
+      subject: "Password Reset Code",
       html: `
       <!DOCTYPE html>
       <html>
@@ -347,12 +422,21 @@ exports.sendForgotPasswordCode = async (req, res) => {
       );
       existingUser.forgotPasswordCode = hashedCodeValue;
       existingUser.forgotPasswordCodeValidation = Date.now();
+      existingUser.lastForgotPasswordCodeSentAt = new Date();
       await existingUser.save();
-      return res.status(200).json({ success: true, message: "Code sent!" });
+      return res
+        .status(200)
+        .json({ success: true, message: "Password reset code sent!" });
     }
-    res.status(400).json({ success: false, message: "Code sent failed!" });
+
+    return res
+      .status(400)
+      .json({ success: false, message: "Failed to send password reset code!" });
   } catch (error) {
-    console.log(error);
+    console.error("Password reset code sending error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -370,15 +454,33 @@ exports.verifyForgotPasswordCode = async (req, res) => {
         .json({ success: false, message: error.details[0].message });
     }
 
-    const codeValue = providedCode.toString();
     const existingUser = await User.findOne({ email }).select(
-      "+forgotPasswordCode +forgotPasswordCodeValidation"
+      "+forgotPasswordCode +forgotPasswordCodeValidation +failedPasswordAttempts +lastFailedPasswordAttempt"
     );
 
     if (!existingUser) {
       return res
         .status(401)
-        .json({ success: false, message: "User does not exists!" });
+        .json({ success: false, message: "User does not exist!" });
+    }
+
+    if (existingUser.failedPasswordAttempts >= 3) {
+      const cooldownEndTime = new Date(
+        existingUser.lastFailedPasswordAttempt.getTime() + 5 * 60 * 1000
+      );
+
+      if (new Date() < cooldownEndTime) {
+        const remainingMinutes = Math.ceil(
+          (cooldownEndTime - new Date()) / (60 * 1000)
+        );
+        return res.status(429).json({
+          success: false,
+          message: `Too many attempts. Try again in ${remainingMinutes} minute(s).`,
+        });
+      } else {
+        existingUser.failedPasswordAttempts = 0;
+        await existingUser.save();
+      }
     }
 
     if (
@@ -387,7 +489,7 @@ exports.verifyForgotPasswordCode = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "something is wrong with the code!" });
+        .json({ success: false, message: "Invalid password reset request!" });
     }
 
     if (
@@ -396,11 +498,11 @@ exports.verifyForgotPasswordCode = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "code has been expired!" });
+        .json({ success: false, message: "Reset code has expired!" });
     }
 
     const hashedCodeValue = hmacProcess(
-      codeValue,
+      providedCode.toString(),
       process.env.HMAC_VERIFICATION_CODE_SECRET
     );
 
@@ -409,15 +511,27 @@ exports.verifyForgotPasswordCode = async (req, res) => {
       existingUser.password = hashedPassword;
       existingUser.forgotPasswordCode = undefined;
       existingUser.forgotPasswordCodeValidation = undefined;
+      existingUser.failedPasswordAttempts = 0;
+      existingUser.lastFailedPasswordAttempt = undefined;
       await existingUser.save();
+
       return res
         .status(200)
-        .json({ success: true, message: "Password updated!!" });
+        .json({ success: true, message: "Password updated successfully!" });
+    } else {
+      existingUser.failedPasswordAttempts =
+        (existingUser.failedPasswordAttempts || 0) + 1;
+      existingUser.lastFailedPasswordAttempt = new Date();
+      await existingUser.save();
+
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid verification code!" });
     }
-    return res
-      .status(400)
-      .json({ success: false, message: "unexpected occured!!" });
   } catch (error) {
-    console.log(error);
+    console.error("Password reset error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };

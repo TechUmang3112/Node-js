@@ -24,6 +24,16 @@ const userSchema = mongoose.Schema(
       type: String,
       select: false,
     },
+    lastVerificationCodeSentAt: {
+      type: Date,
+    },
+    failedAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lastFailedAttempt: {
+      type: Date,
+    },
     verificationCodeValidation: {
       type: Number,
       select: false,
@@ -32,9 +42,19 @@ const userSchema = mongoose.Schema(
       type: String,
       select: false,
     },
+    lastForgotPasswordCodeSentAt: {
+      type: Date,
+    },
     forgotPasswordCodeValidation: {
       type: Number,
       select: false,
+    },
+    failedPasswordAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lastFailedPasswordAttempt: {
+      type: Date,
     },
   },
   {
