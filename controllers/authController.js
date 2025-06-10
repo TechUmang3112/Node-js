@@ -137,7 +137,7 @@ exports.sendVerificationCode = async (req, res) => {
         );
         return res.status(429).json({
           success: false,
-          message: `Please wait ${remainingSeconds} seconds before requesting a new code.`,
+          message: `Please Wait ${remainingSeconds} Seconds Before Requesting A New Code.`,
         });
       }
     }
