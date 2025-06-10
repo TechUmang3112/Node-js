@@ -1,6 +1,6 @@
 # Node.js Express MongoDB Application
 
-A robust Node.js application built with Express.js and MongoDB, featuring authentication, user management, and API endpoints.
+A robust Node.js application built with Express.js and MongoDB, featuring authentication, user management, and API endpoints
 
 ## Features
 
