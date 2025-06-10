@@ -42,7 +42,7 @@ exports.signup = async (req, res) => {
     result.password = undefined;
     res.status(201).json({
       success: true,
-      message: "Your account has been created successfully",
+      message: "Your account has been created successfully!!",
       result,
     });
   } catch (error) {

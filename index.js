@@ -25,7 +25,7 @@ mongoose
 app.use("/api/auth", authRouter);
 
 app.get("/", (req, res) => {
-  res.json({ message: "Hello from the server" });
+  res.json({ message: "Hello from the server!!" });
 });
 
 app.listen(process.env.PORT, () => {
